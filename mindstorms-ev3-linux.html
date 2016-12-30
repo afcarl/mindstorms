@@ -1,0 +1,80 @@
+<p>December 27th, 2016</p>
+<h2>Introduction</h2>
+<p>Santa brought me a Lego Mindstorms set, yay!
+(It's the third generation, EV3, 31313)</p>
+<p>How can we control the robots?</p>
+<ul>
+<li><p>The controller brick has a demo program.</p>
+<p>Go forward, rotate the tool (name?), go back.
+That gets old quick</p></li>
+<li><p>There is a IR controller brick (which needs the brick to have an IR sensor
+attached)</p>
+<p>Much better, but we have to switch channels on the IR controller if we want
+to control both the motion motors and the tool motor. Also, it can only go
+full speed forward or full speed back, no medium speed.</p></li>
+<li><p>A &quot;Commander&quot; app for Android phones/tablets and for Apple devices</p>
+<p>It has no drawbacks of the IR controller: talks via Bluetooth, so no
+additional sensor is needed, controls all functions, with analog control of
+motion motors.</p></li>
+<li><p>A &quot;Programmer&quot; app for phones/tablets</p>
+<p>(it is missing the Color sensor?!)</p></li>
+<li><p>An IDE. For Windows, or Mac. No Linux.  (ev3dev exists, OK, but we want to
+target the original firmware for now)</p></li>
+</ul>
+<h2>Problem</h2>
+<p>The Commander app can only control the Gripper claw quickly. That means if we
+try to grab a hard object, it may bounce and slip away. So I want to make a
+controller that grips slowly.</p>
+<h2>Plan</h2>
+<p>We will connect the brick to a linux computer with a USB cable (included in
+the set), learn a bit about USB communication: how to send a command to a
+specific device.</p>
+<p>We will download the EV3 developer documentation (Communication Developer Kit,
+Firmware Developer Kit)
+and learn how to compose a simple command for the brick: a beep.</p>
+<p>Hopefully we will later learn how to do more complex things.</p>
+<h3>USB Communication</h3>
+<p>Get a computer with Python. I have openSUSE.</p>
+<p>Install the Python USB library, pyusb: <code>sudo zypper install python-usb</code></p>
+<p>Run this script, (as root, to have rights to the USB device)</p>
+<p>(include mindstorms-ev3-linux.py)</p>
+<h3>EV3 Bytecode</h3>
+<p>How did we know what the command should be?</p>
+<p><a href="https://www.lego.com/en-gb/mindstorms/downloads">Mindstorms Downloads</a></p>
+<ul>
+<li><p><a href="https://mi-od-live-s.legocdn.com/r/www/r/mindstorms/-/media/franchises/mindstorms%202014/downloads/firmware%20and%20software/advanced/lego%20mindstorms%20ev3%20communication%20developer%20kit.pdf?l.r2=1239680513">EV3 Communication Developer Kit (PDF)</a></p>
+<ul>
+<li>Section 4: &quot;Direct Commands&quot;
+<ul>
+<li>Subsection 4.2.5: &quot;Play a 1kHz tone for 1 sec&quot;</li>
+</ul></li>
+</ul>
+<p>|Bytes |Description|
+|------|-----------|
+|      |Header     |
+|0F00  |15 bytes follow |
+|0100  |message #1      |
+|80    |a direct command without a reply |
+|0000  |no space for variables needed    |
+|      |Payload                          |
+|94    |opSOUND, <a href="https://mi-od-live-s.legocdn.com/r/www/r/mindstorms/-/media/franchises/mindstorms%202014/downloads/firmware%20and%20software/advanced/lego%20mindstorms%20ev3%20firmware%20developer%20kit.pdf?l.r2=830923294">EV3 Firmware Developer Kit</a> section 4.10 &quot;Sound operations&quot; |
+|01    |argument in this byte: 1 (COMMAND: TONE)              |
+|8102  |argument in 1 next byte: 2 (VOLUME: 0-100)            |
+|82E803|argument in 2 next bytes: 1000 (FREQUENCY: 250-10000) |
+|82E803|argument in 2 next bytes: 1000 (DURATION: in ms)      |</p></li>
+</ul>
+<h3>Discovery Notes</h3>
+<p>DuckDuckGo: usb 0694:0005 linux
+-&gt;
+(nothing of relevance)</p>
+<p>Google: usb 0694:0005 linux
+-&gt;
+...
+http://everything.plus/LEGO_WeDO_USB_Hub_with_Linux/zBYpQw3MrLo.video
+&quot;Ah, a WeDo?&quot;</p>
+<p>google: lego wedo python
+-&gt;
+https://github.com/itdaniher/WeDoMore
+-&gt;
+https://github.com/itdaniher/WeDoMore/blob/master/wedo/<strong>init</strong>.py
+)</p>
