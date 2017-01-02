@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
 require_relative "savefile"
-
+require "cheetah"
 
 def each_pcap_packet_data(pcap_filename, &block)
   File.open(pcap_filename) do |io|
@@ -74,16 +74,35 @@ def handle_ev3(s)
   type = data[2, 1].ord
   print "##{id} #{CMD_TYPES[type]} "
 
-  if type == 0 or type == 0x80
+  case type
+  when 0x00, 0x80               # direct commands
     alloc = data[3, 2].unpack("S<").first
     globals = alloc & 0x03ff
     locals = alloc >> 10
     print "(G#{globals}, L#{locals}) "
-    bytecodes = data[5, -1]
-  else
-    bytecodes = data[3, -1]
+    bytecodes = data[5 .. -1]
+    
+    puts decode_command(bytecodes)
+  when 0x01, 0x81               # system commands
+    bytecodes = data[3 .. -1]
+    puts decode_command(bytecodes)
   end
   puts
+end
+
+def decode_command(s)
+#  puts "DECODE #{s.inspect}"
+  r = Cheetah.run("/home/martin/svn/lms-hacker-tools/EV3/lmsdisasm.py",
+              "-e", "-",
+#  r = Cheetah.run("xxd",
+              stdin: s, stdout: :capture)
+#  puts "R #{r.inspect}"
+  r
+rescue Cheetah::ExecutionFailed => e
+  puts "FAIL"
+  puts e.message
+  puts "Standard output: #{e.stdout}"
+  puts "Error output:    #{e.stderr}"
 end
 
 CMD_TYPES = {
