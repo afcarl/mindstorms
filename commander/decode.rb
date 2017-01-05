@@ -1,6 +1,8 @@
 #!/usr/bin/env ruby
+# Extract the serial communication data from a Bluetooth pcap capture
+
 require_relative "savefile"
-require "cheetah"
+require "yaml"
 
 def each_pcap_packet_data(pcap_filename, &block)
   File.open(pcap_filename) do |io|
@@ -14,29 +16,27 @@ def each_pcap_packet_data(pcap_filename, &block)
   end
 end
 
-def hexdump(s)
-  s.chars.map { |c| format("%02X", c.ord) }.join(" ")
-end
-
-def handle_hci_h4(s)
+def rfcomm_within_hci_h4(s)
   rcvd = s[0, 4].unpack("L>").first
-  case rcvd
+  direction = case rcvd
   when 0
-    print "SENT "
+    :sent
   when 1
-    print "RCVD "
+    :received
   else
     raise "Unhandled rcvd: #{rcvd}"
   end
   acl = s[4, 4]
-  handle_l2cap(s[9 .. -1])
+  serial_data = rfcomm_within_l2cap(s[9 .. -1])
+
+  [direction, serial_data]
 end
 
 def assert_eq(expected, actual)
   raise "Expected #{expected} (#{expected.to_s(16)}), actual #{actual}" unless expected == actual
 end
 
-def handle_l2cap(s)
+def rfcomm_within_l2cap(s)
   len = s[0, 2].unpack("S<").first
   channel = s[2, 2].unpack("S<").first
 
@@ -46,78 +46,30 @@ def handle_l2cap(s)
   when 0x40, 0x41
     handle_rfcomm(s[4 .. -1])
   else
-    puts "?"
+    raise "Unknown channel #{channel}"
   end
 end
+
+def hexdump(s)
+  s.chars.map { |c| format("%02X", c.ord) }.join("")
+end
+
 
 def handle_rfcomm(s)
   # sloppy!
   credits = (s[1].ord & 0x10) != 0
   long = (s[2].ord > 128)
-  handle_rfcomm_data(s[(credits || long ? 4 : 3) .. -2])
+
+  s[(credits || long ? 4 : 3) .. -2]
 end
 
-def handle_rfcomm_data(s)
-  handle_ev3(s)
-end
-
-def handle_ev3(s)
-  print "EV3 "
-  len = s[0, 2].unpack("S<").first
-  data = s[2 .. -1]
-  assert_eq(len, data.size) # rescue puts "!!!"
-
-  puts hexdump(data)
-  print "  "
-
-  id = data[0, 2].unpack("S<").first
-  type = data[2, 1].ord
-  print "##{id} #{CMD_TYPES[type]} "
-
-  case type
-  when 0x00, 0x80               # direct commands
-    alloc = data[3, 2].unpack("S<").first
-    globals = alloc & 0x03ff
-    locals = alloc >> 10
-    print "(G#{globals}, L#{locals}) "
-    bytecodes = data[5 .. -1]
-    
-    puts decode_command(bytecodes)
-  when 0x01, 0x81               # system commands
-    bytecodes = data[3 .. -1]
-    puts decode_command(bytecodes)
-  end
-  puts
-end
-
-def decode_command(s)
-#  puts "DECODE #{s.inspect}"
-  r = Cheetah.run("/home/martin/svn/lms-hacker-tools/EV3/lmsdisasm.py",
-              "-e", "-",
-#  r = Cheetah.run("xxd",
-              stdin: s, stdout: :capture)
-#  puts "R #{r.inspect}"
-  r
-rescue Cheetah::ExecutionFailed => e
-  puts "FAIL"
-  puts e.message
-  puts "Standard output: #{e.stdout}"
-  puts "Error output:    #{e.stderr}"
-end
-
-CMD_TYPES = {
-  0x01 => "SYSTEM_COMMAND_REPLY",
-  0x81 => "SYSTEM_COMMAND_NO_REPLY",
-  0x03 => "SYSTEM_REPLY",
-  0x05 => "SYSTEM_ERROR",
-
-  0x00 => "DIRECT_COMMAND_REPLY",
-  0x80 => "DIRECT_COMMAND_NO_REPLY",
-  0x02 => "DIRECT_REPLY",
-  0x04 => "DIRECT_REPLY_ERROR",
-}
-
+serial_comm = []
 each_pcap_packet_data("tracker.pcap") do |data|
-#  print "DATA "
-  handle_hci_h4(data)
+  direction, serial_data = rfcomm_within_hci_h4(data)
+  serial_comm << {
+    "sent" => direction == :sent,
+    "hexdata" => hexdump(serial_data)
+  }
 end
+
+print YAML.dump(serial_comm)
