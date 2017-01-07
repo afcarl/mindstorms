@@ -1,0 +1,22 @@
+#!/usr/bin/env ruby
+# Convert a raw sound file to a Lego Mindstorms RSF (Robot Sound File)
+# The raw file is assumed to have the correct format:
+#
+# 1 channel
+# 8000Hz
+# 8 bit
+# unsigned integer
+
+data = File.read(ARGV[0])
+File.open(ARGV[1], "wb") do |f|
+  
+  header = [
+    0x0100,                     # file format: raw
+    data.size,                  # data length
+    8000,                       # sample rate
+    0                           # play mode - unused?
+  ]
+  # "S": Short (16b), ">": big endian, "*": repeat
+  f.write(header.pack("S>*"))
+  f.write(data)
+end
