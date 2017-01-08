@@ -26,7 +26,7 @@ def rfcomm_within_hci_h4(s)
   else
     raise "Unhandled rcvd: #{rcvd}"
   end
-  acl = s[4, 4]
+  _acl = s[4, 4]
   serial_data = rfcomm_within_l2cap(s[9 .. -1])
 
   [direction, serial_data]
@@ -38,16 +38,10 @@ end
 
 def rfcomm_within_l2cap(s)
   len = s[0, 2].unpack("S<").first
-  channel = s[2, 2].unpack("S<").first
-
+  _channel = s[2, 2].unpack("S<").first
   assert_eq(len, s[4 .. -1].size)
 
-  case channel
-  when 0x40, 0x41
-    handle_rfcomm(s[4 .. -1])
-  else
-    raise "Unknown channel #{channel}"
-  end
+  handle_rfcomm(s[4 .. -1])
 end
 
 def hexdump(s)
@@ -64,7 +58,7 @@ def handle_rfcomm(s)
 end
 
 serial_comm = []
-each_pcap_packet_data("tracker.pcap") do |data|
+each_pcap_packet_data(ARGV[0] || "tracker.pcap") do |data|
   direction, serial_data = rfcomm_within_hci_h4(data)
   serial_comm << {
     "sent" => direction == :sent,
