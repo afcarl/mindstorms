@@ -100,7 +100,7 @@ ms = MessageSender(sock)
 MOTOR_B = 2
 MOTOR_C = 4
 
-ins = [
+instrs = [
     ins.tone(2, 1760, 500),
     ins.sound_ready(),
 
@@ -130,7 +130,72 @@ ins = [
     ins.sound_ready(),
 ]
 
-for i in ins:
-    ms.direct_command_with_reply(i)
+def fwbk(step):
+    ins = Instruction()
+    return "".join([
+        ins.output_step_sync(nos = MOTOR_B | MOTOR_C,
+                             speed = 50,
+                             turn = 0,
+                             step = step),
+        ins.output_ready(nos = MOTOR_B | MOTOR_C),
+        ins.output_step_sync(nos = MOTOR_B | MOTOR_C,
+                             speed = 50,
+                             turn = 0,
+                             step = -step),
+        ins.output_ready(nos = MOTOR_B | MOTOR_C),
+    ])
+
+turnstep = 450
+while True:
+    print("(ts={0}) > ".format(turnstep), end = '')
+    cmd = raw_input()
+    if cmd == "q":
+        break
+    elif cmd == "k":
+        instr = ins.output_step_speed(nos = MOTOR_B | MOTOR_C,
+                                      speed = 75,
+                                      step_begin = 180,
+                                      step_do = 360,
+                                      step_end = 180)
+    elif cmd == "z":
+        instr = ins.output_step_speed(nos = MOTOR_B | MOTOR_C,
+                                      speed = -75,
+                                      step_begin = 180,
+                                      step_do = 360,
+                                      step_end = 180)
+    elif cmd == "l":
+        instr = ins.output_step_sync(nos = MOTOR_B | MOTOR_C,
+                                     speed = +30,
+                                     turn = -200,
+                                     step = turnstep)
+    elif cmd == "r":
+        instr = ins.output_step_sync(nos = MOTOR_B | MOTOR_C,
+                                     speed = +30,
+                                     turn = +200,
+                                     step = turnstep)
+    elif cmd == "+":
+        turnstep += 50
+        continue
+    elif cmd == "-":
+        turnstep -= 50
+        continue
+    elif cmd == "f":
+        instr = ins.output_step_speed(nos = MOTOR_B | MOTOR_C,
+                                      speed = 50,
+                                      step_begin = 30,
+                                      step_do = 30,
+                                      step_end = 30)
+    elif cmd == "b":
+        instr = ins.output_step_speed(nos = MOTOR_B | MOTOR_C,
+                                      speed = -50,
+                                      step_begin = 30,
+                                      step_do = 30,
+                                      step_end = 30)
+    else:
+        print("?")
+        
+    ms.direct_command_with_reply(instr)
+    instr = ins.output_ready(nos = MOTOR_B | MOTOR_C)
+    ms.direct_command_with_reply(instr)
 
 sock.close()
