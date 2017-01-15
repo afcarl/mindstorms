@@ -14,16 +14,37 @@ def make_lc(n):
 
 class Instruction:        
     def primpar(self, n):
-        return "".join([chr(x) for x in make_lc(n)])
+        if type(n) is int:
+            return "".join([chr(x) for x in make_lc(n)])
+        elif type(n) is str:
+            return "\x80" + n + "\x00"
+        else:
+            raise "Unknown type"
 
     def beep(self):
         return self.tone(2, 880, 500)
     
     def tone(self, volume, frequency, duration_ms):
+        return self.sound_tone(volume, frequency, duration_ms)
+
+    def sound_break(self):
+        return "\x94" + self.primpar(0)
+
+    def sound_tone(self, volume, frequency, duration_ms):
         return "\x94" + self.primpar(1) + \
             self.primpar(volume) + \
             self.primpar(frequency) + \
             self.primpar(duration_ms)
+
+    def sound_play(self, volume, filename):
+        return "\x94" + self.primpar(2) + \
+            self.primpar(volume) + \
+            self.primpar(filename)
+
+    def sound_repeat(self, volume, filename):
+        return "\x94" + self.primpar(3) + \
+            self.primpar(volume) + \
+            self.primpar(filename)
 
     def sound_ready(self):
         return "\x96"
@@ -191,6 +212,12 @@ while True:
                                       step_begin = 30,
                                       step_do = 30,
                                       step_end = 30)
+    elif cmd == "p":
+        instr = ins.sound_repeat(2, "../prjs/tracker/idle")
+
+    elif cmd == "s":
+        instr = ins.sound_break()
+
     else:
         print("?")
         
