@@ -51,10 +51,18 @@ end
 
 def handle_rfcomm(s)
   # sloppy!
-  credits = (s[1].ord & 0x10) != 0
-  long = (s[2].ord > 128)
-
-  s[(credits || long ? 4 : 3) .. -2]
+  credits_size = (s[1].ord & 0x10) == 0 ? 0 : 1
+  len = s[2].ord
+  if len.odd?
+    addr_size = 1
+    len = len >> 1
+  else
+    addr_size = 2
+    len = (len + 256 * s[3].ord) / 2
+  end
+  data = s[2 + addr_size + credits_size .. -2]
+  assert_eq(len, data.size)
+  data
 end
 
 serial_comm = []
