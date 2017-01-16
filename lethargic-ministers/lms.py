@@ -2,6 +2,7 @@
 
 from __future__ import print_function
 import bluetooth
+import struct
 
 def make_lc(n):
     if -32 < n < 32:
@@ -19,7 +20,7 @@ class Instruction:
         elif type(n) is str:
             return "\x80" + n + "\x00"
         else:
-            raise "Unknown type"
+            raise RuntimeError, "Unknown type"
 
     def beep(self):
         return self.tone(2, 880, 500)
@@ -80,6 +81,30 @@ class Instruction:
             self.primpar(layer) + \
             self.primpar(nos)
 
+def u16(n):
+    return chr(n & 0xff) + \
+        chr((n >> 8) & 0xff)
+
+def u32(n):
+    return chr(n & 0xff) + \
+        chr((n >> 8) & 0xff) + \
+        chr((n >> 16) & 0xff) + \
+        chr((n >> 24) & 0xff)
+
+class SysInstruction(Instruction):
+    def begin_download(self, length, filename):
+        """The VM will download *length* bytes and store them at *filename*"""
+        return chr(0x92) + u32(length) + filename + chr(0)
+
+    def continue_download(self, handle, data):
+        return chr(0x93) + chr(handle) + data
+
+    def close_filehandle(self, handle):
+        return chr(0x98) + chr(handle)
+
+    def list_files(self, buf_size, filename):
+        return chr(0x99) + u16(buf_size) + filename + chr(0)
+
 class MessageSender:
     def __init__(self, socket):
         self.counter = 0
@@ -93,7 +118,10 @@ class MessageSender:
         return chr(n & 0xff) + chr((n >> 8) & 0xff)
     
     def direct_command(self, instr_bytes):
-        bytes = self.u16(self.msgid()) + "\x80" + "\x00\x00" + instr_bytes
+        cmd_type = 0x80
+        var_alloc = 0           # FIXME
+        bytes = self.u16(self.msgid()) + chr(cmd_type) + \
+                self.u16(var_alloc) + instr_bytes
 
         packet = self.u16(len(bytes)) + bytes
         print("->")
@@ -101,14 +129,55 @@ class MessageSender:
         self.socket.send(packet)
     
     def direct_command_with_reply(self, instr_bytes):
-        bytes = self.u16(self.msgid()) + "\x00" + "\x00\x00" + instr_bytes
+        cmd_type = 0x00
+        var_alloc = 0           # FIXME
+        bytes = self.u16(self.msgid()) + chr(cmd_type) + \
+                self.u16(var_alloc) + instr_bytes
 
         packet = self.u16(len(bytes)) + bytes
         print("->", repr(packet), sep="")
         self.socket.send(packet)
-        
+
         reply = self.socket.recv(1024)
         print("<-", repr(reply), sep="")
+
+    def system_command(self, instr_bytes):
+        cmd_type = 0x81
+        bytes = self.u16(self.msgid()) + chr(cmd_type) + \
+                instr_bytes
+
+        packet = self.u16(len(bytes)) + bytes
+        print("->", repr(packet), sep="")
+        self.socket.send(packet)
+
+    def unmarshall_message(self, bytes):
+        size = struct.unpack("<H", bytes[0:2])[0]
+        msgid = struct.unpack("<H", bytes[2:4])[0]
+        assert size == len(bytes) - 2
+        return msgid, bytes[4:]
+
+    def system_command_with_reply(self, instr_bytes):
+        cmd_type = 0x01
+        cmd_id = self.msgid()
+        bytes = self.u16(cmd_id) + chr(cmd_type) + \
+                instr_bytes
+
+        packet = self.u16(len(bytes)) + bytes
+        print("->", repr(packet), sep="")
+        self.socket.send(packet)
+
+        reply = self.socket.recv(1024)
+        print("<-", repr(reply), sep="")
+
+        id, reply2 = self.unmarshall_message(reply)
+        assert id == cmd_id
+        rep_type = ord(reply2[0]) # 03 sysreply, 05 syserror
+        rep_cmd = ord(reply2[1])
+        rep_status = ord(reply2[2])
+        if rep_type == 0x05:
+            raise RuntimeError, "Error: {0}".format(rep_status)
+        payload = reply2[3:]
+        return payload
 
 host = "00:16:53:53:EE:8C" # "KRALICEK"
 port = 1                   # the rfcomm port ev3 uses
@@ -116,6 +185,7 @@ sock = bluetooth.BluetoothSocket(bluetooth.RFCOMM)
 sock.connect((host, port))
 
 ins = Instruction()
+sins = SysInstruction()
 ms = MessageSender(sock)
 
 MOTOR_B = 2
@@ -213,16 +283,43 @@ while True:
                                       step_do = 30,
                                       step_end = 30)
     elif cmd == "p":
-        instr = ins.sound_repeat(2, "../prjs/tracker/idle")
+#        instr = ins.sound_repeat(2, "../prjs/tracker/idle")
+        instr = ins.sound_play(100, "../prjs/mluveni/ahoj")
 
     elif cmd == "s":
         instr = ins.sound_break()
 
+    elif cmd == "L":
+        instr = None
+        sinstr = sins.list_files(9999, "/home/root/lms2012/prjs")
+        p = ms.system_command_with_reply(sinstr)
+        l = p[0:4]
+        print(p[4:])
+
+    elif cmd == "D":
+        instr = None
+        sinstr = sins.begin_download(16392, "/home/root/lms2012/prjs/mluveni/ahoj.rsf")
+        p = ms.system_command_with_reply(sinstr)
+        handle = ord(p[0])
+
+        with open("../sound-rsf/ahoj.rsf") as f:
+            contents = f.read()
+        sinstr = sins.continue_download(handle, contents)
+        p = ms.system_command_with_reply(sinstr)
+
+        sinstr = sins.close_filehandle(handle)
+        try:
+            p = ms.system_command_with_reply(sinstr)
+        except RuntimeError:
+            pass                # why does it reply Unknown Handle?
+
     else:
         print("?")
-        
-    ms.direct_command_with_reply(instr)
-    instr = ins.output_ready(nos = MOTOR_B | MOTOR_C)
-    ms.direct_command_with_reply(instr)
+
+    if instr is not None:
+        ms.direct_command_with_reply(instr)
+        instr = ins.output_ready(nos = MOTOR_B | MOTOR_C)
+        ms.direct_command_with_reply(instr)
+
 
 sock.close()
