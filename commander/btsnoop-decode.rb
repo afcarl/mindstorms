@@ -1,11 +1,16 @@
 #!/usr/bin/env ruby
 # Extract the serial communication data from a Bluetooth btsnoop capture
 
-# http://www.fte.com/webhelp/FTS4BT/Content/Technical_Information/BT_Snoop_File_Format.htm
 
 require "pp"
 require "yaml"
 
+# data formats for String#unpack
+U16LE = "S<"                    # unsigned 16 bits little endian
+U32BE = "L>"                    # unsigned 32 bits big endian
+U64BE = "Q>"                    # unsigned 64 bits big endian
+
+# http://www.fte.com/webhelp/FTS4BT/Content/Technical_Information/BT_Snoop_File_Format.htm
 class Btsnoop
   def initialize(io)
     sig = io.read(8)
@@ -13,17 +18,18 @@ class Btsnoop
       raise "Btsnoop signature not found"
     end
 
-    version = io.read(4).unpack("L>").first
+    version = io.read(4).unpack(U32BE).first
     raise "Btsnoop version unknown" unless version == 1
 
-    @datalink = io.read(4).unpack("L>").first
+    @datalink = io.read(4).unpack(U32BE).first
     @io = io
   end
 
   def each_packet(&block)
     while not @io.eof?
       header = @io.read(24)
-      orig_size, size, flags, drops, timestamp = header.unpack("L>L>L>L>Q>")
+      orig_size, size, flags, drops, timestamp =
+                                     header.unpack(U32BE * 4 + U64BE)
       data = @io.read(size)
       block.call(orig_size, size, flags, drops, timestamp, data)
     end
@@ -51,14 +57,13 @@ def parse_hci_h4(data, &block)
 end
 
 def parse_acl(data, &block)
-  ugh, len = data[0, 4].unpack("S<S<")
+  ugh, len = data[0, 4].unpack(U16LE + U16LE)
   inner = data[4 .. -1]
   block.call(ugh, len, inner)
 end
 
 def parse_l2cap(data, &block)
-  len, channel = data[0, 4].unpack("S<S<")
-#  print "LEN #{len} CHAN #{channel} "
+  len, channel = data[0, 4].unpack(U16LE + U16LE)
   inner = data[4 .. -1]
   block.call(len, channel, inner)
 end
@@ -88,17 +93,18 @@ File.open(in_filename) do |f|
   bts = Btsnoop.new(f)
   bts.each_packet_data do |direction, data1|
     parse_hci_h4(data1) do |type, data2|
-      if type == 2              # ACL
-        parse_acl(data2) do |_, _len, data3|
-          parse_l2cap(data3) do |_len, chan, data4|
-            if chan != 1        # control channel
-              parse_rfcomm(data4) do |serial_data|
-                serial_comm << {
-                  "sent" => direction == :sent,
-                  "hexdata" => hexdump(serial_data)
-                }
-              end
-            end
+      next unless type == 2              # ACL
+
+      parse_acl(data2) do |_, _len, data3|
+
+        parse_l2cap(data3) do |_len, chan, data4|
+          next if chan == 1        # control channel
+
+          parse_rfcomm(data4) do |serial_data|
+            serial_comm << {
+              "sent" => direction == :sent,
+              "hexdata" => hexdump(serial_data)
+            }
           end
         end
       end
