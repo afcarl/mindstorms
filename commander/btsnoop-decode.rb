@@ -87,6 +87,7 @@ def parse_rfcomm(data, &block)
 end
 
 serial_comm = []
+bin = ""
 
 in_filename = ARGV[0] || "btsnoop_hci.log"
 File.open(in_filename) do |f|
@@ -105,6 +106,7 @@ File.open(in_filename) do |f|
               "sent" => direction == :sent,
               "hexdata" => hexdump(serial_data)
             }
+            bin << serial_data
           end
         end
       end
@@ -113,3 +115,4 @@ File.open(in_filename) do |f|
 end
 
 File.write(in_filename + ".yaml", YAML.dump(serial_comm))
+File.write(in_filename + ".bin",  bin)
