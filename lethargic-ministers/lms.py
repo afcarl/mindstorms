@@ -284,7 +284,7 @@ while True:
                                       step_end = 30)
     elif cmd == "p":
 #        instr = ins.sound_repeat(2, "../prjs/tracker/idle")
-        instr = ins.sound_play(100, "../prjs/mluveni/ahoj")
+        instr = ins.sound_play(100, "../prjs/mluveni/huu")
 
     elif cmd == "s":
         instr = ins.sound_break()
@@ -298,12 +298,13 @@ while True:
 
     elif cmd == "D":
         instr = None
-        sinstr = sins.begin_download(16392, "/home/root/lms2012/prjs/mluveni/ahoj.rsf")
+        with open("../sound-rsf/huu.rsf") as f:
+            contents = f.read()
+
+        sinstr = sins.begin_download(len(contents), "/home/root/lms2012/prjs/mluveni/huu.rsf")
         p = ms.system_command_with_reply(sinstr)
         handle = ord(p[0])
 
-        with open("../sound-rsf/ahoj.rsf") as f:
-            contents = f.read()
         sinstr = sins.continue_download(handle, contents)
         p = ms.system_command_with_reply(sinstr)
 
