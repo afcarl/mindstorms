@@ -138,7 +138,7 @@ class MessageSender:
         print("->", repr(packet), sep="")
         self.socket.send(packet)
 
-        reply = self.socket.recv(1024)
+        reply = self.recv_packet()
         print("<-", repr(reply), sep="")
 
     def system_command(self, instr_bytes):
@@ -150,11 +150,18 @@ class MessageSender:
         print("->", repr(packet), sep="")
         self.socket.send(packet)
 
-    def unmarshall_message(self, bytes):
-        size = struct.unpack("<H", bytes[0:2])[0]
-        msgid = struct.unpack("<H", bytes[2:4])[0]
-        assert size == len(bytes) - 2
-        return msgid, bytes[4:]
+    def unmarshall_packet(self, bytes):
+        msgid = struct.unpack("<H", bytes[0:2])[0]
+        return msgid, bytes[2:]
+
+    def recv_packet(self):
+        buf = self.socket.recv(2)
+        size = struct.unpack("<H", buf[0:2])[0]
+
+        buf = ""
+        while len(buf) < size:
+            buf += self.socket.recv(1024)
+        return buf
 
     def system_command_with_reply(self, instr_bytes):
         cmd_type = 0x01
@@ -166,10 +173,10 @@ class MessageSender:
         print("->", repr(packet), sep="")
         self.socket.send(packet)
 
-        reply = self.socket.recv(1024)
+        reply = self.recv_packet()
         print("<-", repr(reply), sep="")
 
-        id, reply2 = self.unmarshall_message(reply)
+        id, reply2 = self.unmarshall_packet(reply)
         assert id == cmd_id
         rep_type = ord(reply2[0]) # 03 sysreply, 05 syserror
         rep_cmd = ord(reply2[1])
@@ -289,9 +296,9 @@ while True:
     elif cmd == "s":
         instr = ins.sound_break()
 
-    elif cmd == "L":
+    elif cmd[0] == "L":
         instr = None
-        sinstr = sins.list_files(9999, "/home/root/lms2012/prjs")
+        sinstr = sins.list_files(9999, "/home/root/lms2012/prjs/" + cmd[2:])
         p = ms.system_command_with_reply(sinstr)
         l = p[0:4]
         print(p[4:])
