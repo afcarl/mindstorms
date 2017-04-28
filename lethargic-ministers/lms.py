@@ -109,11 +109,17 @@ class SysInstruction(Instruction):
         """The VM will upload *length* bytes from the file named *filename*"""
         return chr(0x94) + u16(length) + filename + chr(0)
 
+    def continue_upload(self, handle, length):
+        return chr(0x95) + chr(handle) + u16(length)
+
     def close_filehandle(self, handle):
         return chr(0x98) + chr(handle)
 
     def list_files(self, buf_size, filename):
         return chr(0x99) + u16(buf_size) + filename + chr(0)
+
+    def list_open_handles(self):
+        return chr(0x9d)
 
 class MessageSender:
     def __init__(self, socket):
@@ -253,12 +259,23 @@ def fwbk(step):
         ins.output_ready(nos = MOTOR_B | MOTOR_C),
     ])
 
-def upload(fname, fdatasize = 4):
-    sinstr = sins.begin_upload(fdatasize, "/home/root/lms2012/prjs/" + fname)
+def upload(fname):
+    bufsize = 1024
+    sinstr = sins.begin_upload(bufsize, "/home/root/lms2012/prjs/" + fname)
     p = ms.system_command_with_reply(sinstr)
     size = unpack_u32(p[0:4])
     handle = ord(p[4])
-    fdata = p[4:]
+    fdata = p[5:]
+
+    while True:
+        sinstr = sins.continue_upload(handle, bufsize)
+        try:
+            p = ms.system_command_with_reply(sinstr)
+        except:
+            break
+        rhandle = ord(p[0])
+        fdata += p[1:]
+
     with open("upload.bin", "w") as f:
         f.write(fdata)
 
@@ -323,8 +340,8 @@ while True:
         print(p[4:])
 
     elif cmd == "U":
-        upload("SD_Card/MindCub3r-v2p1/TiltCal.rbf", 0x03ff)
-        #upload("SD_Card/MindCub3r-v2p1/mc3solver-v2p1.rtf", 0x03ff)
+        #upload("SD_Card/MindCub3r-v2p1/TiltCal.rbf")
+        upload("SD_Card/MindCub3r-v2p1/mc3solver-v2p1.rtf")
 
     elif cmd[0:2] == "U ":
         fname = cmd[2:]
