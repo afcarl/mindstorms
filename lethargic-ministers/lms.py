@@ -91,6 +91,12 @@ def u32(n):
         chr((n >> 16) & 0xff) + \
         chr((n >> 24) & 0xff)
 
+def unpack_u16(s):
+    return struct.unpack("<H", s)[0]
+
+def unpack_u32(s):
+    return struct.unpack("<L", s)[0]
+
 class SysInstruction(Instruction):
     def begin_download(self, length, filename):
         """The VM will download *length* bytes and store them at *filename*"""
@@ -98,6 +104,10 @@ class SysInstruction(Instruction):
 
     def continue_download(self, handle, data):
         return chr(0x93) + chr(handle) + data
+
+    def begin_upload(self, length, filename):
+        """The VM will upload *length* bytes from the file named *filename*"""
+        return chr(0x94) + u16(length) + filename + chr(0)
 
     def close_filehandle(self, handle):
         return chr(0x98) + chr(handle)
@@ -151,12 +161,12 @@ class MessageSender:
         self.socket.send(packet)
 
     def unmarshall_packet(self, bytes):
-        msgid = struct.unpack("<H", bytes[0:2])[0]
+        msgid = unpack_u16(bytes[0:2])
         return msgid, bytes[2:]
 
     def recv_packet(self):
         buf = self.socket.recv(2)
-        size = struct.unpack("<H", buf[0:2])[0]
+        size = unpack_u16(buf[0:2])
 
         buf = ""
         while len(buf) < size:
@@ -243,8 +253,18 @@ def fwbk(step):
         ins.output_ready(nos = MOTOR_B | MOTOR_C),
     ])
 
+def upload(fname, fdatasize = 4):
+    sinstr = sins.begin_upload(fdatasize, "/home/root/lms2012/prjs/" + fname)
+    p = ms.system_command_with_reply(sinstr)
+    size = unpack_u32(p[0:4])
+    handle = ord(p[4])
+    fdata = p[4:]
+    with open("upload.bin", "w") as f:
+        f.write(fdata)
+
 turnstep = 450
 while True:
+    instr = None
     print("(ts={0}) > ".format(turnstep), end = '')
     cmd = raw_input()
     if cmd == "q":
@@ -296,15 +316,21 @@ while True:
     elif cmd == "s":
         instr = ins.sound_break()
 
-    elif cmd[0] == "L":
-        instr = None
+    elif cmd[0:2] == "L ":
         sinstr = sins.list_files(9999, "/home/root/lms2012/prjs/" + cmd[2:])
         p = ms.system_command_with_reply(sinstr)
         l = p[0:4]
         print(p[4:])
 
+    elif cmd == "U":
+        upload("SD_Card/MindCub3r-v2p1/TiltCal.rbf", 0x03ff)
+        #upload("SD_Card/MindCub3r-v2p1/mc3solver-v2p1.rtf", 0x03ff)
+
+    elif cmd[0:2] == "U ":
+        fname = cmd[2:]
+        upload(fname)
+
     elif cmd == "D":
-        instr = None
         with open("../sound-rsf/huu.rsf") as f:
             contents = f.read()
 
