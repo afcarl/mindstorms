@@ -13,6 +13,9 @@ def make_lc(n):
         return [0x82, n & 0xff, (n >> 8) & 0xff]
     return [0x83, n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >> 24) & 0xff]
 
+class VMError(RuntimeError):
+    pass
+
 class Instruction:        
     def primpar(self, n):
         if type(n) is int:
@@ -172,12 +175,17 @@ class MessageSender:
 
     def recv_packet(self):
         buf = self.socket.recv(2)
+        print("R<-", repr(buf), sep="")
         size = unpack_u16(buf[0:2])
 
-        buf = ""
-        while len(buf) < size:
-            buf += self.socket.recv(1024)
-        return buf
+        res = ""
+        while len(res) < size:
+            buf = self.socket.recv(min(512, size - len(res)))
+            print("R<-", repr(buf), "(", len(buf), ")", sep="")
+            res += buf
+        if len(res) > size:
+            raise "AARG"
+        return res
 
     def system_command_with_reply(self, instr_bytes):
         cmd_type = 0x01
@@ -198,7 +206,7 @@ class MessageSender:
         rep_cmd = ord(reply2[1])
         rep_status = ord(reply2[2])
         if rep_type == 0x05:
-            raise RuntimeError, "Error: {0}".format(rep_status)
+            raise VMError, "Error: {0}".format(rep_status)
         payload = reply2[3:]
         return payload
 
@@ -271,7 +279,7 @@ def upload(fname):
         sinstr = sins.continue_upload(handle, bufsize)
         try:
             p = ms.system_command_with_reply(sinstr)
-        except:
+        except VMError:
             break
         rhandle = ord(p[0])
         fdata += p[1:]
@@ -340,8 +348,7 @@ while True:
         print(p[4:])
 
     elif cmd == "U":
-        #upload("SD_Card/MindCub3r-v2p1/TiltCal.rbf")
-        upload("SD_Card/MindCub3r-v2p1/mc3solver-v2p1.rtf")
+        upload("SD_Card/MindCub3r-v2p1/MindCub3r.rbf")
 
     elif cmd[0:2] == "U ":
         fname = cmd[2:]
